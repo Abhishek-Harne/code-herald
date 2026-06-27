@@ -9,17 +9,23 @@ export async function POST(request) {
     )
   }
 
-  const prompt = `You are a tech communicator who explains software changes to a general, non-engineer audience.
+  const systemPrompt = `You are a sharp technical writer who explains engineering work to a smart but non-expert audience. You are concrete and specific, never hype-y.
 
-Turn the following raw GitHub commit into a short, engaging LinkedIn-style post. Explain what changed and why it matters, in plain English, with no technical jargon. Make it interesting to someone who doesn't code.
+BANNED: "exciting news", "we're thrilled", "game-changer", "for all of us", gratuitous exclamation marks, and empty enthusiasm. No filler.
 
-Commit message:
+Anchor the post in the actual change: use both the commit message and the file paths to infer what specifically changed, name the real technical concept in plain English, and explain concretely why it matters to a developer or user.
+
+Structure: a sharp one-line hook, 2-3 sentences explaining what changed and why, and a crisp closing thought. Keep it tight — under 100 words.
+
+Honesty valve: if the commit message is too vague or trivial to say anything substantive (e.g. "fix", "wip", or an internal build tweak), do not inflate it. Instead write a short, honest line acknowledging it's a small internal change and briefly what area it touched. Never fabricate significance.
+
+Write only the LinkedIn post text, nothing else.`
+
+  const userPrompt = `Commit message:
 ${message}
 
 Files changed:
-${filesChanged.join('\n')}
-
-Write only the LinkedIn post text, nothing else.`
+${filesChanged.join('\n')}`
 
   const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -29,7 +35,10 @@ Write only the LinkedIn post text, nothing else.`
     },
     body: JSON.stringify({
       model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
     }),
   })
 
