@@ -16,6 +16,11 @@ export async function GET(request) {
     'X-GitHub-Api-Version': '2022-11-28',
   }
 
+  // TEMP DEBUG LOGGING — remove once the 401 is diagnosed
+  console.log(
+    `[commits debug] GITHUB_TOKEN exists: ${Boolean(process.env.GITHUB_TOKEN)}, length: ${(process.env.GITHUB_TOKEN || '').length}`
+  )
+
   const listRes = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/commits?per_page=10`,
     { headers }
@@ -23,6 +28,8 @@ export async function GET(request) {
 
   if (!listRes.ok) {
     const body = await listRes.text()
+    // TEMP DEBUG LOGGING — remove once the 401 is diagnosed
+    console.log(`[commits debug] GitHub API error ${listRes.status}: ${body}`)
     return Response.json(
       { error: `GitHub API error: ${listRes.status}`, details: body },
       { status: listRes.status }
