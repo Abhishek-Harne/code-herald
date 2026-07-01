@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   GitBranch as Github,
   Link2 as Linkedin,
@@ -18,8 +18,12 @@ import {
   Terminal,
   Megaphone,
   Heart,
-  ExternalLink,
   Share2,
+  Clock,
+  Trash2,
+  X,
+  FileText,
+  Video,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -40,6 +44,19 @@ function formatDate(iso) {
   } catch { return iso; }
 }
 
+function formatRelative(iso) {
+  try {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch { return ""; }
+}
+
 function firstLine(msg) { return msg.split("\n")[0]; }
 
 function buildShareUrls(post, commit, owner, repo) {
@@ -54,13 +71,64 @@ function buildShareUrls(post, commit, owner, repo) {
   };
 }
 
+// ── localStorage history ──────────────────────────────────────────────────────
+
+const HISTORY_KEY = "codeherald_history";
+
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+  } catch { return []; }
+}
+
+function saveHistory(items) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); } catch { /* ignore */ }
+}
+
+function useHistory() {
+  const [history, setHistory] = useState([]);
+
+  // Load from localStorage on mount
+  useEffect(() => { setHistory(loadHistory()); }, []);
+
+  const addEntry = useCallback((entry) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const item = { id, ...entry, timestamp: new Date().toISOString(), action: null };
+    setHistory((prev) => {
+      const next = [item, ...prev];
+      saveHistory(next);
+      return next;
+    });
+    return id;
+  }, []);
+
+  const updateAction = useCallback((id, action) => {
+    setHistory((prev) => {
+      const next = prev.map((item) => item.id === id ? { ...item, action } : item);
+      saveHistory(next);
+      return next;
+    });
+  }, []);
+
+  const clearHistory = useCallback(() => {
+    setHistory([]);
+    saveHistory([]);
+  }, []);
+
+  return { history, addEntry, updateAction, clearHistory };
+}
+
 // ── shared UI primitives ──────────────────────────────────────────────────────
 
-function CopyButton({ text, label = "Copy" }) {
+function CopyButton({ text, label = "Copy", onCopied }) {
   const [copied, setCopied] = useState(false);
   async function handleCopy() {
-    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
-    catch { /* ignore */ }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      onCopied?.();
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
   }
   return (
     <button onClick={handleCopy} title="Copy to clipboard"
@@ -75,17 +143,16 @@ function CopyButton({ text, label = "Copy" }) {
   );
 }
 
-// Platform-specific share button with clear contrast and hover color
-function ShareButton({ href, label, tooltip, hoverClass }) {
+function ShareButton({ href, label, tooltip, hoverClass, onShare }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" title={tooltip}
+      onClick={onShare}
       className={`flex items-center justify-center rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 font-mono text-xs font-bold text-stone-300 transition-all hover:border-transparent hover:text-white ${hoverClass}`}>
       {label}
     </a>
   );
 }
 
-// Smooth expand/collapse using CSS grid animation
 function Collapsible({ expanded, children }) {
   return (
     <div style={{ display: "grid", gridTemplateRows: expanded ? "1fr" : "0fr", transition: "grid-template-rows 0.25s ease" }}>
@@ -94,22 +161,136 @@ function Collapsible({ expanded, children }) {
   );
 }
 
+// ── history panel ─────────────────────────────────────────────────────────────
+
+function HistoryPanel({ history, onUpdateAction, onClear, onClose }) {
+  const [expandedId, setExpandedId] = useState(null);
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" aria-modal="true" role="dialog">
+      {/* backdrop */}
+      <div className="absolute inset-0 bg-stone-950/70 backdrop-blur-sm" onClick={onClose} />
+
+      {/* drawer */}
+      <div className="relative flex w-full max-w-lg flex-col border-l border-stone-800 bg-stone-950 shadow-2xl">
+        {/* header */}
+        <div className="flex items-center justify-between border-b border-stone-800 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Clock size={14} className="text-amber-400" />
+            <span className="text-sm font-semibold text-stone-100">History</span>
+            {history.length > 0 && (
+              <span className="rounded-full border border-stone-700 bg-stone-900 px-2 py-0.5 font-mono text-[10px] text-stone-400">
+                {history.length}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {history.length > 0 && (
+              <button onClick={onClear}
+                className="flex items-center gap-1.5 rounded-lg border border-stone-700 px-2.5 py-1.5 text-xs text-stone-500 transition-colors hover:border-red-900/60 hover:bg-red-950/30 hover:text-red-400">
+                <Trash2 size={11} /> Clear all
+              </button>
+            )}
+            <button onClick={onClose} title="Close"
+              className="flex h-7 w-7 items-center justify-center rounded-lg border border-stone-800 text-stone-500 transition-colors hover:border-stone-700 hover:text-stone-300">
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* list */}
+        <div className="flex-1 overflow-y-auto">
+          {history.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 px-8 py-24 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-stone-800 bg-stone-900">
+                <Clock size={20} className="text-stone-600" />
+              </div>
+              <p className="text-sm font-medium text-stone-400">Nothing generated yet</p>
+              <p className="text-xs leading-relaxed text-stone-600">Fetch a repo and create your first story — it'll appear here.</p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-stone-800/60">
+              {history.map((item) => {
+                const isExpanded = expandedId === item.id;
+                return (
+                  <li key={item.id} className="px-5 py-4">
+                    <div className="flex items-start gap-3">
+                      {/* type icon */}
+                      <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${item.type === "post" ? "border-amber-400/20 bg-amber-400/5" : "border-stone-700 bg-stone-900"}`}>
+                        {item.type === "post"
+                          ? <FileText size={12} className="text-amber-400" />
+                          : <Video size={12} className="text-stone-400" />
+                        }
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-stone-200">{item.commitTitle}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="font-mono text-[10px] text-stone-500">{item.repo}</span>
+                          <span className="text-stone-700">·</span>
+                          <span className={`font-mono text-[10px] ${item.type === "post" ? "text-amber-400/60" : "text-stone-500"}`}>
+                            {item.type === "post" ? "LinkedIn post" : `Script · ${item.format || "reel"}`}
+                          </span>
+                          <span className="text-stone-700">·</span>
+                          <span className="font-mono text-[10px] text-stone-600">{formatRelative(item.timestamp)}</span>
+                        </div>
+                        {item.action && (
+                          <span className="mt-1.5 inline-flex items-center gap-1 rounded border border-stone-700 bg-stone-900 px-1.5 py-0.5 font-mono text-[9px] text-stone-500">
+                            <Check size={8} className="text-amber-400" /> {item.action}
+                          </span>
+                        )}
+                      </div>
+
+                      <button onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                        className="shrink-0 text-stone-600 transition-colors hover:text-stone-400">
+                        <ChevronDown size={13} className={`transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`} />
+                      </button>
+                    </div>
+
+                    {/* expanded content */}
+                    <Collapsible expanded={isExpanded}>
+                      <div className="mt-3 rounded-lg border border-stone-800 bg-stone-900/50">
+                        <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap p-3 font-mono text-[11px] leading-relaxed text-stone-300">
+                          {item.content}
+                        </pre>
+                        <div className="border-t border-stone-800 px-3 py-2">
+                          <CopyButton
+                            text={item.content}
+                            label="Re-copy"
+                            onCopied={() => onUpdateAction(item.id, "copied")}
+                          />
+                        </div>
+                      </div>
+                    </Collapsible>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── commit card ───────────────────────────────────────────────────────────────
 
-function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
+function CommitCard({ commit, owner, repo, recommendation, repoContext, addEntry, updateAction }) {
   const [post, setPost] = useState(null);
   const [generatingPost, setGeneratingPost] = useState(false);
   const [postError, setPostError] = useState(null);
   const [postExpanded, setPostExpanded] = useState(true);
+  const [postHistoryId, setPostHistoryId] = useState(null);
 
   const [script, setScript] = useState(null);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [scriptError, setScriptError] = useState(null);
   const [scriptExpanded, setScriptExpanded] = useState(true);
   const [scriptFormat, setScriptFormat] = useState("reel");
+  const [scriptHistoryId, setScriptHistoryId] = useState(null);
 
   async function handleGeneratePost() {
-    setGeneratingPost(true); setPostError(null); setPost(null); setPostExpanded(true);
+    setGeneratingPost(true); setPostError(null); setPost(null); setPostExpanded(true); setPostHistoryId(null);
     try {
       const res = await fetch("/api/generate", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -118,12 +299,20 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setPost(data.post);
+      const id = addEntry({
+        repo: `${owner}/${repo}`,
+        commitTitle: firstLine(commit.message),
+        commitSha: commit.sha,
+        type: "post",
+        content: data.post,
+      });
+      setPostHistoryId(id);
     } catch (err) { setPostError(err.message || "Something went wrong."); }
     finally { setGeneratingPost(false); }
   }
 
   async function handleGenerateScript() {
-    setGeneratingScript(true); setScriptError(null); setScript(null); setScriptExpanded(true);
+    setGeneratingScript(true); setScriptError(null); setScript(null); setScriptExpanded(true); setScriptHistoryId(null);
     try {
       const res = await fetch("/api/script", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -137,6 +326,15 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setScript(data.script);
+      const id = addEntry({
+        repo: `${owner}/${repo}`,
+        commitTitle: firstLine(commit.message),
+        commitSha: commit.sha,
+        type: "script",
+        format: scriptFormat,
+        content: data.script,
+      });
+      setScriptHistoryId(id);
     } catch (err) { setScriptError(err.message || "Something went wrong."); }
     finally { setGeneratingScript(false); }
   }
@@ -146,7 +344,6 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
 
   return (
     <article className={`group relative overflow-hidden rounded-xl border bg-stone-900 transition-colors ${isRecommended ? "border-amber-400/40 hover:border-amber-400/60" : "border-stone-800 hover:border-stone-700"}`}>
-      {/* left accent bar */}
       <div className={`absolute left-0 top-0 h-full w-0.5 transition-colors ${isRecommended ? "bg-amber-400/70" : "bg-amber-400/30 group-hover:bg-amber-400/60"}`} />
 
       <div className="p-5 sm:p-6">
@@ -163,7 +360,6 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
                 {commit.sha.slice(0, 7)}
               </code>
             </div>
-            {/* recommended badge */}
             {isRecommended && (
               <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2">
                 <span className="mt-px font-mono text-xs text-amber-400">★</span>
@@ -179,7 +375,6 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
               className="rounded-lg bg-amber-400 px-3.5 py-2 text-xs font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40">
               {generatingPost ? "Generating…" : "Generate post"}
             </button>
-            {/* Script format toggle + button */}
             <div className="flex items-center gap-1.5">
               <div className="flex overflow-hidden rounded-lg border border-stone-700">
                 <button onClick={() => setScriptFormat("reel")}
@@ -215,10 +410,8 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
           </div>
         )}
 
-        {/* post error */}
         {postError && <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-400">{postError}</div>}
 
-        {/* generated post */}
         {post && (
           <div className="mt-5 rounded-lg border border-stone-700 bg-stone-950/60">
             <div className="flex items-center justify-between gap-2 border-b border-stone-800 px-4 py-2.5">
@@ -230,19 +423,23 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
             </div>
             <Collapsible expanded={postExpanded}>
               <p className="whitespace-pre-wrap p-4 text-sm leading-relaxed text-stone-200">{post}</p>
-              {/* Share row */}
               {shareUrls && (
                 <div className="border-t border-stone-800 px-4 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-stone-500">
                       <Share2 size={11} /> Share →
                     </span>
-                    <ShareButton href={shareUrls.linkedin} label="in" tooltip="Share on LinkedIn" hoverClass="hover:bg-[#0077b5]" />
-                    <ShareButton href={shareUrls.twitter}  label="𝕏"  tooltip="Post on X / Twitter" hoverClass="hover:bg-stone-700" />
-                    <ShareButton href={shareUrls.hn}       label="HN" tooltip="Submit to Hacker News" hoverClass="hover:bg-[#ff6600]" />
-                    <ShareButton href={shareUrls.reddit}   label="r/" tooltip="Post to Reddit" hoverClass="hover:bg-[#ff4500]" />
+                    <ShareButton href={shareUrls.linkedin} label="in" tooltip="Share on LinkedIn" hoverClass="hover:bg-[#0077b5]"
+                      onShare={() => postHistoryId && updateAction(postHistoryId, "shared to LinkedIn")} />
+                    <ShareButton href={shareUrls.twitter}  label="𝕏"  tooltip="Post on X / Twitter" hoverClass="hover:bg-stone-700"
+                      onShare={() => postHistoryId && updateAction(postHistoryId, "shared to X")} />
+                    <ShareButton href={shareUrls.hn}       label="HN" tooltip="Submit to Hacker News" hoverClass="hover:bg-[#ff6600]"
+                      onShare={() => postHistoryId && updateAction(postHistoryId, "submitted to HN")} />
+                    <ShareButton href={shareUrls.reddit}   label="r/" tooltip="Post to Reddit" hoverClass="hover:bg-[#ff4500]"
+                      onShare={() => postHistoryId && updateAction(postHistoryId, "shared to Reddit")} />
                     <span className="text-stone-800">|</span>
-                    <CopyButton text={post} label="Copy post" />
+                    <CopyButton text={post} label="Copy post"
+                      onCopied={() => postHistoryId && updateAction(postHistoryId, "copied")} />
                   </div>
                 </div>
               )}
@@ -250,10 +447,8 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
           </div>
         )}
 
-        {/* script error */}
         {scriptError && <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-400">{scriptError}</div>}
 
-        {/* generated script */}
         {script && (
           <div className="mt-5 rounded-lg border border-stone-700 bg-stone-950">
             <div className="flex items-center justify-between gap-2 border-b border-stone-800 px-4 py-2.5">
@@ -264,7 +459,8 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
-                <CopyButton text={script} />
+                <CopyButton text={script}
+                  onCopied={() => scriptHistoryId && updateAction(scriptHistoryId, "copied")} />
                 <button onClick={() => setScriptExpanded(e => !e)} title={scriptExpanded ? "Collapse" : "Expand"}
                   className="flex items-center rounded p-1 text-stone-600 transition-colors hover:text-stone-400">
                   <ChevronDown size={13} className={`transition-transform duration-200 ${scriptExpanded ? "" : "-rotate-90"}`} />
@@ -289,7 +485,7 @@ function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
 
 // ── navbar ────────────────────────────────────────────────────────────────────
 
-function Navbar() {
+function Navbar({ onOpenHistory, historyCount }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 16);
@@ -304,10 +500,20 @@ function Navbar() {
           <span className="font-mono text-amber-400">{">"}</span>
           Code<span className="text-amber-400">Herald</span>
         </a>
-        <nav className="flex items-center gap-6">
+        <nav className="flex items-center gap-4 sm:gap-6">
           <a href="#how-it-works" className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">How it works</a>
           <a href="#why"          className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">Why</a>
           <a href="#use-cases"    className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">Use cases</a>
+          <button onClick={onOpenHistory}
+            className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100">
+            <Clock size={12} />
+            History
+            {historyCount > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 font-mono text-[9px] font-bold text-stone-950">
+                {historyCount > 99 ? "99+" : historyCount}
+              </span>
+            )}
+          </button>
           <a href="https://github.com/Abhishek-Harne" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100">
             <Github size={13} /> GitHub
@@ -377,7 +583,7 @@ function Hero({ repoInput, setRepoInput, onFetch, loading }) {
 
 // ── results area ──────────────────────────────────────────────────────────────
 
-function ResultsArea({ commits, loading, error, owner, repo, recommendations, recommendLoading, repoContext }) {
+function ResultsArea({ commits, loading, error, owner, repo, recommendations, recommendLoading, repoContext, addEntry, updateAction }) {
   if (!loading && !commits && !error) return null;
 
   const recMap = Object.fromEntries((recommendations || []).map((r) => [r.sha, r]));
@@ -421,6 +627,8 @@ function ResultsArea({ commits, loading, error, owner, repo, recommendations, re
                 repo={repo}
                 recommendation={recMap[commit.sha] || null}
                 repoContext={repoContext}
+                addEntry={addEntry}
+                updateAction={updateAction}
               />
             ))}
           </div>
@@ -605,7 +813,18 @@ export default function Home() {
   const [recommendations, setRecommendations] = useState([]);
   const [recommendLoading, setRecommendLoading] = useState(false);
   const [repoContext, setRepoContext] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const resultsRef = useRef(null);
+
+  const { history, addEntry, updateAction, clearHistory } = useHistory();
+
+  // Close history panel on Escape
+  useEffect(() => {
+    if (!historyOpen) return;
+    const onKey = (e) => { if (e.key === "Escape") setHistoryOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [historyOpen]);
 
   async function fetchRecommendations(fetchedCommits) {
     setRecommendLoading(true);
@@ -667,7 +886,7 @@ export default function Home() {
 
   return (
     <>
-      <Navbar />
+      <Navbar onOpenHistory={() => setHistoryOpen(true)} historyCount={history.length} />
       <main>
         <Hero repoInput={repoInput} setRepoInput={setRepoInput} onFetch={handleFetchCommits} loading={loading} />
         <div ref={resultsRef} className="scroll-mt-8">
@@ -680,6 +899,8 @@ export default function Home() {
             recommendations={recommendations}
             recommendLoading={recommendLoading}
             repoContext={repoContext}
+            addEntry={addEntry}
+            updateAction={updateAction}
           />
         </div>
         <HowItWorks />
@@ -688,6 +909,15 @@ export default function Home() {
         <UseCases />
       </main>
       <Footer />
+
+      {historyOpen && (
+        <HistoryPanel
+          history={history}
+          onUpdateAction={updateAction}
+          onClear={clearHistory}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
     </>
   );
 }
