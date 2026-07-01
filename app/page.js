@@ -2,40 +2,83 @@
 
 import { useState } from "react";
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
 function parseRepoInput(value) {
   const trimmed = value.trim();
   if (!trimmed) return null;
-
-  const githubUrlMatch = trimmed.match(
-    /github\.com\/([^/\s]+)\/([^/\s#?]+)/i
-  );
-  if (githubUrlMatch) {
-    return { owner: githubUrlMatch[1], repo: githubUrlMatch[2].replace(/\.git$/, "") };
-  }
-
-  const shorthandMatch = trimmed.match(/^([^/\s]+)\/([^/\s]+)$/);
-  if (shorthandMatch) {
-    return { owner: shorthandMatch[1], repo: shorthandMatch[2].replace(/\.git$/, "") };
-  }
-
+  const urlMatch = trimmed.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i);
+  if (urlMatch) return { owner: urlMatch[1], repo: urlMatch[2].replace(/\.git$/, "") };
+  const shortMatch = trimmed.match(/^([^/\s]+)\/([^/\s]+)$/);
+  if (shortMatch) return { owner: shortMatch[1], repo: shortMatch[2].replace(/\.git$/, "") };
   return null;
 }
 
 function formatDate(iso) {
   try {
-    return new Date(iso).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
+    return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  } catch { return iso; }
 }
 
-function firstLine(message) {
-  return message.split("\n")[0];
+function firstLine(msg) { return msg.split("\n")[0]; }
+
+// ── icons ─────────────────────────────────────────────────────────────────────
+
+function IconClipboard() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="2" width="8" height="11" rx="1.5" />
+      <path d="M5 4H4a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 4 14h5.5" />
+    </svg>
+  );
 }
+
+function IconCheck() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8l3.5 3.5L13 4.5" />
+    </svg>
+  );
+}
+
+function IconArrow() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 8h10M9 4l4 4-4 4" />
+    </svg>
+  );
+}
+
+// ── copy button ───────────────────────────────────────────────────────────────
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy to clipboard"
+      className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
+        copied
+          ? "text-amber-400"
+          : "text-stone-500 hover:text-stone-300"
+      }`}
+    >
+      {copied ? <IconCheck /> : <IconClipboard />}
+      {copied ? "Copied!" : "Copy"}
+    </button>
+  );
+}
+
+// ── commit card ───────────────────────────────────────────────────────────────
 
 function CommitCard({ commit }) {
   const [post, setPost] = useState(null);
@@ -54,18 +97,13 @@ function CommitCard({ commit }) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: commit.message,
-          filesChanged: commit.filesChanged,
-        }),
+        body: JSON.stringify({ message: commit.message, filesChanged: commit.filesChanged }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `Request failed with status ${res.status}`);
-      }
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setPost(data.post);
     } catch (err) {
-      setPostError(err.message || "Something went wrong generating this post.");
+      setPostError(err.message || "Something went wrong.");
     } finally {
       setGeneratingPost(false);
     }
@@ -79,113 +117,142 @@ function CommitCard({ commit }) {
       const res = await fetch("/api/script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: commit.message,
-          filesChanged: commit.filesChanged,
-        }),
+        body: JSON.stringify({ message: commit.message, filesChanged: commit.filesChanged }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `Request failed with status ${res.status}`);
-      }
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setScript(data.script);
     } catch (err) {
-      setScriptError(err.message || "Something went wrong generating this script.");
+      setScriptError(err.message || "Something went wrong.");
     } finally {
       setGeneratingScript(false);
     }
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm shadow-slate-200/50 transition-shadow hover:shadow-md">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="font-medium text-slate-900 leading-snug">
-            {firstLine(commit.message)}
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500">
-            <span className="font-medium text-slate-600">{commit.author}</span>
-            <span aria-hidden>·</span>
-            <span>{formatDate(commit.date)}</span>
-            <span aria-hidden>·</span>
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
-              {commit.sha.slice(0, 7)}
-            </code>
+    <article className="group relative overflow-hidden rounded-xl border border-stone-800 bg-stone-900 transition-colors hover:border-stone-700">
+      {/* amber left accent bar */}
+      <div className="absolute left-0 top-0 h-full w-0.5 bg-amber-400/40 transition-colors group-hover:bg-amber-400/70" />
+
+      <div className="p-5 sm:p-6">
+        {/* commit headline + actions */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="min-w-0">
+            <p className="text-base font-semibold leading-snug text-stone-100">
+              {firstLine(commit.message)}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-mono text-xs text-stone-400">{commit.author}</span>
+              <span className="text-stone-700" aria-hidden>·</span>
+              <span className="font-mono text-xs text-stone-500">{formatDate(commit.date)}</span>
+              <span className="text-stone-700" aria-hidden>·</span>
+              <code className="rounded border border-stone-700 bg-stone-950 px-1.5 py-0.5 font-mono text-xs text-amber-400/80">
+                {commit.sha.slice(0, 7)}
+              </code>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button
+              onClick={handleGeneratePost}
+              disabled={generatingPost}
+              className="rounded-lg bg-amber-400 px-3.5 py-2 text-xs font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40"
+            >
+              {generatingPost ? "Generating…" : "Generate post"}
+            </button>
+            <button
+              onClick={handleGenerateScript}
+              disabled={generatingScript}
+              className="rounded-lg border border-stone-700 bg-transparent px-3.5 py-2 text-xs font-semibold text-stone-300 transition-colors hover:border-stone-600 hover:bg-stone-800 disabled:cursor-not-allowed disabled:text-stone-600"
+            >
+              {generatingScript ? "Generating…" : "Video script"}
+            </button>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            onClick={handleGeneratePost}
-            disabled={generatingPost}
-            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
-          >
-            {generatingPost ? "Generating…" : "Generate post"}
-          </button>
-          <button
-            onClick={handleGenerateScript}
-            disabled={generatingScript}
-            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-          >
-            {generatingScript ? "Generating…" : "Generate video script"}
-          </button>
-        </div>
+
+        {/* file path chips */}
+        {commit.filesChanged?.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {commit.filesChanged.slice(0, 6).map((file) => (
+              <span
+                key={file}
+                title={file}
+                className="inline-block max-w-[200px] truncate rounded border border-stone-700/60 bg-stone-950 px-2 py-0.5 font-mono text-[11px] text-stone-500"
+              >
+                {file}
+              </span>
+            ))}
+            {commit.filesChanged.length > 6 && (
+              <span className="rounded border border-stone-700/60 bg-stone-950 px-2 py-0.5 font-mono text-[11px] text-stone-600">
+                +{commit.filesChanged.length - 6} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* post error */}
+        {postError && (
+          <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-400">
+            {postError}
+          </div>
+        )}
+
+        {/* generated post */}
+        {post && (
+          <div className="mt-5 rounded-lg border border-stone-700 bg-stone-950/60">
+            <div className="flex items-center justify-between border-b border-stone-800 px-4 py-2.5">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/70">
+                LinkedIn Post
+              </span>
+              <CopyButton text={post} />
+            </div>
+            <p className="whitespace-pre-wrap p-4 text-sm leading-relaxed text-stone-200">
+              {post}
+            </p>
+          </div>
+        )}
+
+        {/* script error */}
+        {scriptError && (
+          <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-400">
+            {scriptError}
+          </div>
+        )}
+
+        {/* generated script */}
+        {script && (
+          <div className="mt-5 rounded-lg border border-stone-700 bg-stone-950">
+            <div className="flex items-center justify-between border-b border-stone-800 px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" title="Recording" />
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-stone-400">
+                  Video Script · 30–45 sec
+                </span>
+              </div>
+              <CopyButton text={script} />
+            </div>
+            <pre className="overflow-x-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-stone-300">
+              {script}
+            </pre>
+            <div className="border-t border-stone-800 px-4 py-3">
+              <a
+                href="https://gemini.google.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 font-mono text-xs text-stone-500 transition-colors hover:text-amber-400"
+              >
+                Paste this script into Google Veo to generate a video
+                <IconArrow />
+              </a>
+            </div>
+          </div>
+        )}
       </div>
-
-      {commit.filesChanged?.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          {commit.filesChanged.slice(0, 6).map((file) => (
-            <span
-              key={file}
-              className="truncate rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 max-w-[220px]"
-              title={file}
-            >
-              {file}
-            </span>
-          ))}
-          {commit.filesChanged.length > 6 && (
-            <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-500">
-              +{commit.filesChanged.length - 6} more
-            </span>
-          )}
-        </div>
-      )}
-
-      {postError && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {postError}
-        </div>
-      )}
-
-      {post && (
-        <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-500">
-            Generated LinkedIn post
-          </p>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-            {post}
-          </p>
-        </div>
-      )}
-
-      {scriptError && (
-        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {scriptError}
-        </div>
-      )}
-
-      {script && (
-        <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/60 p-4">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-violet-500">
-            Video script · 30–45 sec
-          </p>
-          <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-800">
-            {script}
-          </p>
-        </div>
-      )}
-    </div>
+    </article>
   );
 }
+
+// ── page ──────────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const [repoInput, setRepoInput] = useState("");
@@ -197,11 +264,10 @@ export default function Home() {
     e.preventDefault();
     const parsed = parseRepoInput(repoInput);
     if (!parsed) {
-      setError("Enter a repo as owner/repo or a full GitHub URL, e.g. facebook/react.");
+      setError("Enter a repo as owner/repo or a full GitHub URL — e.g. facebook/react");
       setCommits(null);
       return;
     }
-
     setLoading(true);
     setError(null);
     setCommits(null);
@@ -210,9 +276,7 @@ export default function Home() {
         `/api/commits?owner=${encodeURIComponent(parsed.owner)}&repo=${encodeURIComponent(parsed.repo)}`
       );
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || `Request failed with status ${res.status}`);
-      }
+      if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       setCommits(data.commits || []);
     } catch (err) {
       setError(err.message || "Something went wrong fetching commits.");
@@ -222,72 +286,89 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-slate-50 via-white to-white">
-      <div className="mx-auto max-w-4xl px-6 pb-24 pt-16 sm:pt-24">
-        <header className="text-center">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500 shadow-sm">
-            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
-            From commit to story, instantly
+    <div className="min-h-full bg-stone-950">
+      <div className="mx-auto max-w-3xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16">
+
+        {/* ── masthead ── */}
+        <header className="mb-10 border-b border-stone-800 pb-8">
+          <div className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.25em] text-stone-600">
+            Engineering journalism
           </div>
-          <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-            Code<span className="text-indigo-600">Herald</span>
+          <h1 className="text-3xl font-semibold tracking-tight text-stone-100 sm:text-4xl">
+            Code<span className="text-amber-400">Herald</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-lg leading-relaxed text-slate-500">
+          <p className="mt-2 max-w-md text-sm leading-relaxed text-stone-500">
             Turn what your engineers ship into stories the world reads.
           </p>
         </header>
 
-        <form
-          onSubmit={handleFetchCommits}
-          className="mx-auto mt-10 flex max-w-xl flex-col gap-3 sm:flex-row"
-        >
+        {/* ── repo input ── */}
+        <form onSubmit={handleFetchCommits} className="flex flex-col gap-2 sm:flex-row">
           <input
             type="text"
             value={repoInput}
             onChange={(e) => setRepoInput(e.target.value)}
-            placeholder="facebook/react or https://github.com/facebook/react"
-            className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition-shadow placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            placeholder="owner/repo — e.g. facebook/react"
+            className="flex-1 rounded-lg border border-stone-700 bg-stone-900 px-4 py-2.5 font-mono text-sm text-stone-200 outline-none placeholder:text-stone-600 transition-colors focus:border-amber-400/60 focus:ring-1 focus:ring-amber-400/20"
           />
           <button
             type="submit"
             disabled={loading}
-            className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="rounded-lg bg-amber-400 px-5 py-2.5 text-sm font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40"
           >
             {loading ? "Fetching…" : "Fetch commits"}
           </button>
         </form>
 
+        {/* ── input error ── */}
         {error && (
-          <div className="mx-auto mt-6 max-w-xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-700">
+          <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-400">
             {error}
           </div>
         )}
 
+        {/* ── loading state ── */}
         {loading && (
-          <div className="mt-16 flex flex-col items-center gap-3 text-slate-400">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-500" />
-            <p className="text-sm">Fetching recent commits…</p>
+          <div className="mt-20 flex flex-col items-center gap-4">
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-stone-700 border-t-amber-400" />
+            <p className="font-mono text-xs text-stone-600">Fetching recent commits…</p>
           </div>
         )}
 
+        {/* ── empty state ── */}
         {!loading && commits && commits.length === 0 && (
-          <p className="mt-16 text-center text-sm text-slate-400">
-            No commits found for that repo.
-          </p>
+          <div className="mt-20 text-center">
+            <p className="font-mono text-xs text-stone-600">No commits found for that repo.</p>
+          </div>
         )}
 
+        {/* ── commits list ── */}
         {!loading && commits && commits.length > 0 && (
-          <div className="mt-12 space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Recent commits
-            </h2>
-            <div className="space-y-4">
+          <div className="mt-10">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-stone-600">
+                Recent commits
+              </span>
+              <div className="h-px flex-1 bg-stone-800" />
+              <span className="font-mono text-[10px] text-stone-700">{commits.length}</span>
+            </div>
+            <div className="space-y-3">
               {commits.map((commit) => (
                 <CommitCard key={commit.sha} commit={commit} />
               ))}
             </div>
           </div>
         )}
+
+        {/* ── idle empty state (before any search) ── */}
+        {!loading && !commits && !error && (
+          <div className="mt-20 text-center">
+            <p className="font-mono text-xs text-stone-700">
+              Enter a GitHub repo above to pull recent commits.
+            </p>
+          </div>
+        )}
+
       </div>
     </div>
   );
