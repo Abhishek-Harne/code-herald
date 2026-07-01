@@ -21,10 +21,11 @@ export async function GET(request) {
     `[commits debug] GITHUB_TOKEN exists: ${Boolean(process.env.GITHUB_TOKEN)}, length: ${(process.env.GITHUB_TOKEN || '').length}`
   )
 
-  const listRes = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/commits?per_page=10`,
-    { headers }
-  )
+  const [listRes, repoInfoRes, readmeRes] = await Promise.all([
+    fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=10`, { headers }),
+    fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers }),
+    fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, { headers }),
+  ])
 
   if (!listRes.ok) {
     const body = await listRes.text()
@@ -37,6 +38,25 @@ export async function GET(request) {
   }
 
   const commits = await listRes.json()
+
+  // Extract repo description
+  let repoDescription = ''
+  if (repoInfoRes.ok) {
+    const repoInfo = await repoInfoRes.json()
+    repoDescription = repoInfo.description || ''
+  }
+
+  // Extract first ~400 chars of README (best-effort)
+  let readmeExcerpt = ''
+  if (readmeRes.ok) {
+    try {
+      const readmeData = await readmeRes.json()
+      if (readmeData.encoding === 'base64' && readmeData.content) {
+        const decoded = Buffer.from(readmeData.content, 'base64').toString('utf-8')
+        readmeExcerpt = decoded.slice(0, 400).replace(/\n+/g, ' ').trim()
+      }
+    } catch { /* ignore */ }
+  }
 
   const detailed = await Promise.all(
     commits.map(async (commit) => {
@@ -56,5 +76,8 @@ export async function GET(request) {
     })
   )
 
-  return Response.json({ commits: detailed })
+  return Response.json({
+    commits: detailed,
+    repoContext: { description: repoDescription, readme: readmeExcerpt },
+  })
 }

@@ -1,6 +1,6 @@
 export async function POST(request) {
   const body = await request.json()
-  const { message, filesChanged } = body || {}
+  const { message, filesChanged, format = 'reel', repoContext = {} } = body || {}
 
   if (!message || !Array.isArray(filesChanged)) {
     return Response.json(
@@ -9,33 +9,67 @@ export async function POST(request) {
     )
   }
 
-  const systemPrompt = `You are a sharp technical writer creating short video scripts for a 30-45 second social media clip about a software change. Your audience is smart but not necessarily technical.
+  const isReel = format !== 'youtube'
+  const formatLabel = isReel ? 'Reel (30–45 seconds)' : 'YouTube Short (60–120 seconds)'
 
-BANNED: "exciting news", "we're thrilled", "game-changer", "for all of us", gratuitous exclamation marks, and empty enthusiasm. No filler. No hype.
+  const repoLine = repoContext.description
+    ? `Repo description: ${repoContext.description}`
+    : repoContext.readme
+    ? `README excerpt: ${repoContext.readme.slice(0, 200)}`
+    : 'No repo context available.'
 
-Use both the commit message and the file paths to infer what specifically changed. Name the real technical concept in plain English and explain concretely why it matters.
+  const systemPrompt = `You are a sharp technical writer creating video scripts for software teams. Format: ${formatLabel}.
 
-Format the script exactly like this — no extra commentary, just the script:
+BANNED: "exciting news", "we're thrilled", "game-changer", gratuitous exclamation marks, empty enthusiasm, corporate filler, fabricated significance.
 
-HOOK: [one punchy sentence spoken in the first 3 seconds that names the real change]
+You have access to:
+1. The repo context (description/README) — what the project actually is
+2. The commit message — what changed
+3. The file paths — where it changed
 
-VO: [spoken line 1 — what was the problem or situation before]
-[visual suggestion in brackets, e.g. "[screen recording of the error]"]
+Follow this narrative arc exactly, in order:
 
-VO: [spoken line 2 — what changed and how]
+BEAT 1 — Context/setup: What is this project, for someone who's never heard of it? Use the repo context. One or two crisp lines.
+BEAT 2 — Why it matters: What's the real-world stake? Why should a developer or user care about this area?
+BEAT 3 — What shipped: The actual change from this commit. Name the real technical concept in plain English.
+BEAT 4 — The difference: Where and how will a user or developer actually feel this? Concrete and specific.
+BEAT 5 — Long-term angle: What does this enable or signal going forward?
+BEAT 6 — Closing hook: One tight, memorable takeaway.
+
+${isReel
+  ? 'REEL FORMAT: Hit every beat fast and tight. Compress context to a single sharp line. Punch through each beat in a sentence or two. No padding. Energetic but not hypey.'
+  : 'YOUTUBE FORMAT: Let each beat breathe. More depth on "why it matters" and "long-term". Still concrete and honest — just more room.'}
+
+Script format (use this structure exactly — no extra commentary):
+
+HOOK: [one punchy opening sentence spoken in the first 3 seconds]
+
+VO: [context/setup — beat 1]
 [visual suggestion in brackets]
 
-VO: [spoken line 3 — why it matters to a developer or user]
+VO: [why it matters — beat 2]
 [visual suggestion in brackets]
 
-VO: [spoken line 4 (optional) — crisp closing thought or implication]
+VO: [what shipped — beat 3]
 [visual suggestion in brackets]
 
-Keep each VO line short enough to be spoken naturally in under 10 seconds. Visual suggestions should be concrete and achievable (screen recordings, text overlays, code snippets, diagrams).
+VO: [the difference — beat 4]
+[visual suggestion in brackets]
 
-Honesty valve: if the commit is too vague or trivial (e.g. "fix", "wip", a minor build tweak), do not inflate it. Write a short honest script acknowledging it's a small internal change and what area it touched. Never fabricate significance.`
+VO: [long-term angle — beat 5]
+[visual suggestion in brackets]
 
-  const userPrompt = `Commit message:
+VO: [closing hook — beat 6]
+[visual suggestion in brackets]
+
+Visual suggestions must be concrete and achievable: screen recordings, text overlays, code snippets, diagrams, before/after comparisons.
+
+Honesty valve: if the commit is too vague or trivial (e.g. "fix", "wip", a minor build tweak), do not force a grand narrative. Write a short, honest script acknowledging it's a small internal change and what area it touched. Keep the same structure but compress it — don't fabricate stakes.`
+
+  const userPrompt = `Repo context:
+${repoLine}
+
+Commit message:
 ${message}
 
 Files changed:

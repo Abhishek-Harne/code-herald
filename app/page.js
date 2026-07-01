@@ -14,12 +14,12 @@ import {
   Users,
   Check,
   Clipboard,
-  ChevronRight,
   ChevronDown,
   Terminal,
   Megaphone,
   Heart,
   ExternalLink,
+  Share2,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ function buildShareUrls(post, commit, owner, repo) {
 
 // ── shared UI primitives ──────────────────────────────────────────────────────
 
-function CopyButton({ text }) {
+function CopyButton({ text, label = "Copy" }) {
   const [copied, setCopied] = useState(false);
   async function handleCopy() {
     try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
@@ -64,17 +64,22 @@ function CopyButton({ text }) {
   }
   return (
     <button onClick={handleCopy} title="Copy to clipboard"
-      className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${copied ? "text-amber-400" : "text-stone-500 hover:text-stone-300"}`}>
-      {copied ? <Check size={13} /> : <Clipboard size={13} />}
-      {copied ? "Copied!" : "Copy"}
+      className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+        copied
+          ? "border-amber-400/40 bg-amber-400/10 text-amber-400"
+          : "border-stone-700 bg-stone-900 text-stone-300 hover:border-stone-600 hover:bg-stone-800 hover:text-stone-100"
+      }`}>
+      {copied ? <Check size={12} /> : <Clipboard size={12} />}
+      {copied ? "Copied!" : label}
     </button>
   );
 }
 
-function ShareLink({ href, label, tooltip }) {
+// Platform-specific share button with clear contrast and hover color
+function ShareButton({ href, label, tooltip, hoverClass }) {
   return (
     <a href={href} target="_blank" rel="noopener noreferrer" title={tooltip}
-      className="flex items-center rounded px-1.5 py-1 font-mono text-[10px] font-bold text-stone-600 transition-colors hover:bg-stone-800 hover:text-stone-300">
+      className={`flex items-center justify-center rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 font-mono text-xs font-bold text-stone-300 transition-all hover:border-transparent hover:text-white ${hoverClass}`}>
       {label}
     </a>
   );
@@ -91,7 +96,7 @@ function Collapsible({ expanded, children }) {
 
 // ── commit card ───────────────────────────────────────────────────────────────
 
-function CommitCard({ commit, owner, repo, recommendation }) {
+function CommitCard({ commit, owner, repo, recommendation, repoContext }) {
   const [post, setPost] = useState(null);
   const [generatingPost, setGeneratingPost] = useState(false);
   const [postError, setPostError] = useState(null);
@@ -101,6 +106,7 @@ function CommitCard({ commit, owner, repo, recommendation }) {
   const [generatingScript, setGeneratingScript] = useState(false);
   const [scriptError, setScriptError] = useState(null);
   const [scriptExpanded, setScriptExpanded] = useState(true);
+  const [scriptFormat, setScriptFormat] = useState("reel");
 
   async function handleGeneratePost() {
     setGeneratingPost(true); setPostError(null); setPost(null); setPostExpanded(true);
@@ -121,7 +127,12 @@ function CommitCard({ commit, owner, repo, recommendation }) {
     try {
       const res = await fetch("/api/script", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: commit.message, filesChanged: commit.filesChanged }),
+        body: JSON.stringify({
+          message: commit.message,
+          filesChanged: commit.filesChanged,
+          format: scriptFormat,
+          repoContext: repoContext || {},
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
@@ -131,7 +142,6 @@ function CommitCard({ commit, owner, repo, recommendation }) {
   }
 
   const shareUrls = post ? buildShareUrls(post, commit, owner, repo) : null;
-
   const isRecommended = Boolean(recommendation);
 
   return (
@@ -164,15 +174,28 @@ function CommitCard({ commit, owner, repo, recommendation }) {
               </div>
             )}
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="flex shrink-0 flex-col gap-2">
             <button onClick={handleGeneratePost} disabled={generatingPost}
               className="rounded-lg bg-amber-400 px-3.5 py-2 text-xs font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40">
               {generatingPost ? "Generating…" : "Generate post"}
             </button>
-            <button onClick={handleGenerateScript} disabled={generatingScript}
-              className="rounded-lg border border-stone-700 bg-transparent px-3.5 py-2 text-xs font-semibold text-stone-300 transition-colors hover:border-stone-600 hover:bg-stone-800 disabled:cursor-not-allowed disabled:text-stone-600">
-              {generatingScript ? "Generating…" : "Video script"}
-            </button>
+            {/* Script format toggle + button */}
+            <div className="flex items-center gap-1.5">
+              <div className="flex overflow-hidden rounded-lg border border-stone-700">
+                <button onClick={() => setScriptFormat("reel")}
+                  className={`px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${scriptFormat === "reel" ? "bg-stone-700 text-stone-100" : "bg-stone-900 text-stone-500 hover:text-stone-300"}`}>
+                  Reel
+                </button>
+                <button onClick={() => setScriptFormat("youtube")}
+                  className={`border-l border-stone-700 px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${scriptFormat === "youtube" ? "bg-stone-700 text-stone-100" : "bg-stone-900 text-stone-500 hover:text-stone-300"}`}>
+                  YouTube
+                </button>
+              </div>
+              <button onClick={handleGenerateScript} disabled={generatingScript}
+                className="flex-1 rounded-lg border border-stone-700 bg-transparent px-2.5 py-1.5 text-[11px] font-semibold text-stone-300 transition-colors hover:border-stone-600 hover:bg-stone-800 disabled:cursor-not-allowed disabled:text-stone-600">
+                {generatingScript ? "Generating…" : "Script"}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -200,25 +223,29 @@ function CommitCard({ commit, owner, repo, recommendation }) {
           <div className="mt-5 rounded-lg border border-stone-700 bg-stone-950/60">
             <div className="flex items-center justify-between gap-2 border-b border-stone-800 px-4 py-2.5">
               <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/70">LinkedIn Post</span>
-              <div className="flex items-center gap-0.5">
-                {shareUrls && (
-                  <>
-                    <ShareLink href={shareUrls.linkedin} label="in"  tooltip="Share on LinkedIn (opens composer)" />
-                    <ShareLink href={shareUrls.twitter}  label="𝕏"   tooltip="Post on X / Twitter (opens composer)" />
-                    <ShareLink href={shareUrls.hn}       label="HN"  tooltip="Submit to Hacker News" />
-                    <ShareLink href={shareUrls.reddit}   label="r/"  tooltip="Share on Reddit (opens submit page)" />
-                    <span className="mx-1 text-stone-800">|</span>
-                  </>
-                )}
-                <CopyButton text={post} />
-                <button onClick={() => setPostExpanded(e => !e)} title={postExpanded ? "Collapse" : "Expand"}
-                  className="flex items-center rounded p-1 text-stone-600 transition-colors hover:text-stone-400">
-                  <ChevronDown size={13} className={`transition-transform duration-200 ${postExpanded ? "" : "-rotate-90"}`} />
-                </button>
-              </div>
+              <button onClick={() => setPostExpanded(e => !e)} title={postExpanded ? "Collapse" : "Expand"}
+                className="flex items-center rounded p-1 text-stone-500 transition-colors hover:text-stone-300">
+                <ChevronDown size={13} className={`transition-transform duration-200 ${postExpanded ? "" : "-rotate-90"}`} />
+              </button>
             </div>
             <Collapsible expanded={postExpanded}>
               <p className="whitespace-pre-wrap p-4 text-sm leading-relaxed text-stone-200">{post}</p>
+              {/* Share row */}
+              {shareUrls && (
+                <div className="border-t border-stone-800 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+                      <Share2 size={11} /> Share →
+                    </span>
+                    <ShareButton href={shareUrls.linkedin} label="in" tooltip="Share on LinkedIn" hoverClass="hover:bg-[#0077b5]" />
+                    <ShareButton href={shareUrls.twitter}  label="𝕏"  tooltip="Post on X / Twitter" hoverClass="hover:bg-stone-700" />
+                    <ShareButton href={shareUrls.hn}       label="HN" tooltip="Submit to Hacker News" hoverClass="hover:bg-[#ff6600]" />
+                    <ShareButton href={shareUrls.reddit}   label="r/" tooltip="Post to Reddit" hoverClass="hover:bg-[#ff4500]" />
+                    <span className="text-stone-800">|</span>
+                    <CopyButton text={post} label="Copy post" />
+                  </div>
+                </div>
+              )}
             </Collapsible>
           </div>
         )}
@@ -232,9 +259,11 @@ function CommitCard({ commit, owner, repo, recommendation }) {
             <div className="flex items-center justify-between gap-2 border-b border-stone-800 px-4 py-2.5">
               <div className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-stone-400">Video Script · 30–45 sec</span>
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-stone-400">
+                  Video Script · {scriptFormat === "reel" ? "30–45 sec" : "60–120 sec"}
+                </span>
               </div>
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-1.5">
                 <CopyButton text={script} />
                 <button onClick={() => setScriptExpanded(e => !e)} title={scriptExpanded ? "Collapse" : "Expand"}
                   className="flex items-center rounded p-1 text-stone-600 transition-colors hover:text-stone-400">
@@ -276,8 +305,8 @@ function Navbar() {
           Code<span className="text-amber-400">Herald</span>
         </a>
         <nav className="flex items-center gap-6">
-          <a href="#about"        className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">About</a>
           <a href="#how-it-works" className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">How it works</a>
+          <a href="#why"          className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">Why</a>
           <a href="#use-cases"    className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">Use cases</a>
           <a href="https://github.com/Abhishek-Harne" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100">
@@ -348,7 +377,7 @@ function Hero({ repoInput, setRepoInput, onFetch, loading }) {
 
 // ── results area ──────────────────────────────────────────────────────────────
 
-function ResultsArea({ commits, loading, error, owner, repo, recommendations, recommendLoading }) {
+function ResultsArea({ commits, loading, error, owner, repo, recommendations, recommendLoading, repoContext }) {
   if (!loading && !commits && !error) return null;
 
   const recMap = Object.fromEntries((recommendations || []).map((r) => [r.sha, r]));
@@ -391,6 +420,7 @@ function ResultsArea({ commits, loading, error, owner, repo, recommendations, re
                 owner={owner}
                 repo={repo}
                 recommendation={recMap[commit.sha] || null}
+                repoContext={repoContext}
               />
             ))}
           </div>
@@ -434,6 +464,30 @@ function HowItWorks() {
             );
           })}
         </div>
+      </div>
+    </section>
+  );
+}
+
+// ── why this exists ───────────────────────────────────────────────────────────
+
+function WhyThisExists() {
+  return (
+    <section id="why" className="border-t border-stone-800 bg-stone-950 px-5 py-24 sm:px-8">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-8 font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/60">Why this exists</div>
+        <blockquote className="relative pl-6">
+          <div className="absolute left-0 top-0 h-full w-0.5 bg-amber-400/40" />
+          <p className="text-xl font-medium leading-relaxed tracking-tight text-stone-200 sm:text-2xl">
+            Incredible engineering work happens every day and almost none of it reaches the outside world.
+          </p>
+          <p className="mt-6 text-base leading-relaxed text-stone-400">
+            Great features ship buried in commit logs no one reads. The gap isn't the work — it's the translation. Engineers aren't failing at communication. The tooling is failing them.
+          </p>
+          <p className="mt-4 text-base leading-relaxed text-stone-400">
+            CodeHerald reads what your team actually ships and turns it into stories people want to read, at a pace no human content team can match. Not spin. Not marketing copy. The real thing, in plain English.
+          </p>
+        </blockquote>
       </div>
     </section>
   );
@@ -550,6 +604,7 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [recommendLoading, setRecommendLoading] = useState(false);
+  const [repoContext, setRepoContext] = useState(null);
   const resultsRef = useRef(null);
 
   async function fetchRecommendations(fetchedCommits) {
@@ -591,6 +646,7 @@ export default function Home() {
     setError(null);
     setCommits(null);
     setRecommendations([]);
+    setRepoContext(null);
 
     setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
 
@@ -600,6 +656,7 @@ export default function Home() {
       if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
       const fetchedCommits = data.commits || [];
       setCommits(fetchedCommits);
+      setRepoContext(data.repoContext || null);
       if (fetchedCommits.length > 0) fetchRecommendations(fetchedCommits);
     } catch (err) {
       setError(err.message || "Something went wrong fetching commits.");
@@ -622,9 +679,11 @@ export default function Home() {
             repo={currentRepo}
             recommendations={recommendations}
             recommendLoading={recommendLoading}
+            repoContext={repoContext}
           />
         </div>
         <HowItWorks />
+        <WhyThisExists />
         <Benefits />
         <UseCases />
       </main>
