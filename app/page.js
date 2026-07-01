@@ -15,9 +15,11 @@ import {
   Check,
   Clipboard,
   ChevronRight,
+  ChevronDown,
   Terminal,
   Megaphone,
   Heart,
+  ExternalLink,
 } from "lucide-react";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -40,47 +42,71 @@ function formatDate(iso) {
 
 function firstLine(msg) { return msg.split("\n")[0]; }
 
-// ── copy button ───────────────────────────────────────────────────────────────
+function buildShareUrls(post, commit, owner, repo) {
+  const title = firstLine(commit.message);
+  const ghUrl = `https://github.com/${owner}/${repo}/commit/${commit.sha}`;
+  const shortPost = post.length > 280 ? post.slice(0, 277) + "…" : post;
+  return {
+    linkedin: `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(ghUrl)}&title=${encodeURIComponent(title)}&summary=${encodeURIComponent(post)}`,
+    twitter:  `https://twitter.com/intent/tweet?text=${encodeURIComponent(shortPost)}`,
+    hn:       `https://news.ycombinator.com/submitlink?t=${encodeURIComponent(title)}&u=${encodeURIComponent(ghUrl)}`,
+    reddit:   `https://www.reddit.com/submit?title=${encodeURIComponent(title)}&text=${encodeURIComponent(post)}`,
+  };
+}
+
+// ── shared UI primitives ──────────────────────────────────────────────────────
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
   async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch { /* ignore */ }
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { /* ignore */ }
   }
   return (
-    <button
-      onClick={handleCopy}
-      title="Copy to clipboard"
-      className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${
-        copied ? "text-amber-400" : "text-stone-500 hover:text-stone-300"
-      }`}
-    >
+    <button onClick={handleCopy} title="Copy to clipboard"
+      className={`flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors ${copied ? "text-amber-400" : "text-stone-500 hover:text-stone-300"}`}>
       {copied ? <Check size={13} /> : <Clipboard size={13} />}
       {copied ? "Copied!" : "Copy"}
     </button>
   );
 }
 
+function ShareLink({ href, label, tooltip }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" title={tooltip}
+      className="flex items-center rounded px-1.5 py-1 font-mono text-[10px] font-bold text-stone-600 transition-colors hover:bg-stone-800 hover:text-stone-300">
+      {label}
+    </a>
+  );
+}
+
+// Smooth expand/collapse using CSS grid animation
+function Collapsible({ expanded, children }) {
+  return (
+    <div style={{ display: "grid", gridTemplateRows: expanded ? "1fr" : "0fr", transition: "grid-template-rows 0.25s ease" }}>
+      <div style={{ overflow: "hidden" }}>{children}</div>
+    </div>
+  );
+}
+
 // ── commit card ───────────────────────────────────────────────────────────────
 
-function CommitCard({ commit }) {
+function CommitCard({ commit, owner, repo, recommendation }) {
   const [post, setPost] = useState(null);
   const [generatingPost, setGeneratingPost] = useState(false);
   const [postError, setPostError] = useState(null);
+  const [postExpanded, setPostExpanded] = useState(true);
+
   const [script, setScript] = useState(null);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [scriptError, setScriptError] = useState(null);
+  const [scriptExpanded, setScriptExpanded] = useState(true);
 
   async function handleGeneratePost() {
-    setGeneratingPost(true); setPostError(null); setPost(null);
+    setGeneratingPost(true); setPostError(null); setPost(null); setPostExpanded(true);
     try {
       const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: commit.message, filesChanged: commit.filesChanged }),
       });
       const data = await res.json();
@@ -91,11 +117,10 @@ function CommitCard({ commit }) {
   }
 
   async function handleGenerateScript() {
-    setGeneratingScript(true); setScriptError(null); setScript(null);
+    setGeneratingScript(true); setScriptError(null); setScript(null); setScriptExpanded(true);
     try {
       const res = await fetch("/api/script", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: commit.message, filesChanged: commit.filesChanged }),
       });
       const data = await res.json();
@@ -105,10 +130,17 @@ function CommitCard({ commit }) {
     finally { setGeneratingScript(false); }
   }
 
+  const shareUrls = post ? buildShareUrls(post, commit, owner, repo) : null;
+
+  const isRecommended = Boolean(recommendation);
+
   return (
-    <article className="group relative overflow-hidden rounded-xl border border-stone-800 bg-stone-900 transition-colors hover:border-stone-700">
-      <div className="absolute left-0 top-0 h-full w-0.5 bg-amber-400/40 transition-colors group-hover:bg-amber-400/70" />
+    <article className={`group relative overflow-hidden rounded-xl border bg-stone-900 transition-colors ${isRecommended ? "border-amber-400/40 hover:border-amber-400/60" : "border-stone-800 hover:border-stone-700"}`}>
+      {/* left accent bar */}
+      <div className={`absolute left-0 top-0 h-full w-0.5 transition-colors ${isRecommended ? "bg-amber-400/70" : "bg-amber-400/30 group-hover:bg-amber-400/60"}`} />
+
       <div className="p-5 sm:p-6">
+        {/* headline + action buttons */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <p className="text-base font-semibold leading-snug text-stone-100">{firstLine(commit.message)}</p>
@@ -121,25 +153,30 @@ function CommitCard({ commit }) {
                 {commit.sha.slice(0, 7)}
               </code>
             </div>
+            {/* recommended badge */}
+            {isRecommended && (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 px-3 py-2">
+                <span className="mt-px font-mono text-xs text-amber-400">★</span>
+                <div>
+                  <span className="text-xs font-semibold text-amber-300">Recommended story</span>
+                  <p className="mt-0.5 text-xs leading-relaxed text-stone-500">{recommendation.reason}</p>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <button
-              onClick={handleGeneratePost}
-              disabled={generatingPost}
-              className="rounded-lg bg-amber-400 px-3.5 py-2 text-xs font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40"
-            >
+            <button onClick={handleGeneratePost} disabled={generatingPost}
+              className="rounded-lg bg-amber-400 px-3.5 py-2 text-xs font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40">
               {generatingPost ? "Generating…" : "Generate post"}
             </button>
-            <button
-              onClick={handleGenerateScript}
-              disabled={generatingScript}
-              className="rounded-lg border border-stone-700 bg-transparent px-3.5 py-2 text-xs font-semibold text-stone-300 transition-colors hover:border-stone-600 hover:bg-stone-800 disabled:cursor-not-allowed disabled:text-stone-600"
-            >
+            <button onClick={handleGenerateScript} disabled={generatingScript}
+              className="rounded-lg border border-stone-700 bg-transparent px-3.5 py-2 text-xs font-semibold text-stone-300 transition-colors hover:border-stone-600 hover:bg-stone-800 disabled:cursor-not-allowed disabled:text-stone-600">
               {generatingScript ? "Generating…" : "Video script"}
             </button>
           </div>
         </div>
 
+        {/* file chips */}
         {commit.filesChanged?.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-1.5">
             {commit.filesChanged.slice(0, 6).map((file) => (
@@ -155,40 +192,65 @@ function CommitCard({ commit }) {
           </div>
         )}
 
+        {/* post error */}
         {postError && <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-400">{postError}</div>}
 
+        {/* generated post */}
         {post && (
           <div className="mt-5 rounded-lg border border-stone-700 bg-stone-950/60">
-            <div className="flex items-center justify-between border-b border-stone-800 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-2 border-b border-stone-800 px-4 py-2.5">
               <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/70">LinkedIn Post</span>
-              <CopyButton text={post} />
+              <div className="flex items-center gap-0.5">
+                {shareUrls && (
+                  <>
+                    <ShareLink href={shareUrls.linkedin} label="in"  tooltip="Share on LinkedIn (opens composer)" />
+                    <ShareLink href={shareUrls.twitter}  label="𝕏"   tooltip="Post on X / Twitter (opens composer)" />
+                    <ShareLink href={shareUrls.hn}       label="HN"  tooltip="Submit to Hacker News" />
+                    <ShareLink href={shareUrls.reddit}   label="r/"  tooltip="Share on Reddit (opens submit page)" />
+                    <span className="mx-1 text-stone-800">|</span>
+                  </>
+                )}
+                <CopyButton text={post} />
+                <button onClick={() => setPostExpanded(e => !e)} title={postExpanded ? "Collapse" : "Expand"}
+                  className="flex items-center rounded p-1 text-stone-600 transition-colors hover:text-stone-400">
+                  <ChevronDown size={13} className={`transition-transform duration-200 ${postExpanded ? "" : "-rotate-90"}`} />
+                </button>
+              </div>
             </div>
-            <p className="whitespace-pre-wrap p-4 text-sm leading-relaxed text-stone-200">{post}</p>
+            <Collapsible expanded={postExpanded}>
+              <p className="whitespace-pre-wrap p-4 text-sm leading-relaxed text-stone-200">{post}</p>
+            </Collapsible>
           </div>
         )}
 
+        {/* script error */}
         {scriptError && <div className="mt-4 rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 font-mono text-xs text-red-400">{scriptError}</div>}
 
+        {/* generated script */}
         {script && (
           <div className="mt-5 rounded-lg border border-stone-700 bg-stone-950">
-            <div className="flex items-center justify-between border-b border-stone-800 px-4 py-2.5">
+            <div className="flex items-center justify-between gap-2 border-b border-stone-800 px-4 py-2.5">
               <div className="flex items-center gap-2">
                 <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
                 <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-stone-400">Video Script · 30–45 sec</span>
               </div>
-              <CopyButton text={script} />
+              <div className="flex items-center gap-0.5">
+                <CopyButton text={script} />
+                <button onClick={() => setScriptExpanded(e => !e)} title={scriptExpanded ? "Collapse" : "Expand"}
+                  className="flex items-center rounded p-1 text-stone-600 transition-colors hover:text-stone-400">
+                  <ChevronDown size={13} className={`transition-transform duration-200 ${scriptExpanded ? "" : "-rotate-90"}`} />
+                </button>
+              </div>
             </div>
-            <pre className="overflow-x-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-stone-300">{script}</pre>
-            <div className="border-t border-stone-800 px-4 py-3">
-              <a
-                href="https://gemini.google.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 font-mono text-xs text-stone-500 transition-colors hover:text-amber-400"
-              >
-                Paste this script into Google Veo to generate a video <ArrowRight size={12} />
-              </a>
-            </div>
+            <Collapsible expanded={scriptExpanded}>
+              <pre className="overflow-x-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-stone-300">{script}</pre>
+              <div className="border-t border-stone-800 px-4 py-3">
+                <a href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 font-mono text-xs text-stone-500 transition-colors hover:text-amber-400">
+                  Paste this script into Google Veo to generate a video <ArrowRight size={12} />
+                </a>
+              </div>
+            </Collapsible>
           </div>
         )}
       </div>
@@ -214,15 +276,11 @@ function Navbar() {
           Code<span className="text-amber-400">Herald</span>
         </a>
         <nav className="flex items-center gap-6">
-          <a href="#about" className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">About</a>
+          <a href="#about"        className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">About</a>
           <a href="#how-it-works" className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">How it works</a>
-          <a href="#use-cases" className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">Use cases</a>
-          <a
-            href="https://github.com/Abhishek-Harne"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100"
-          >
+          <a href="#use-cases"    className="hidden text-xs font-medium text-stone-500 transition-colors hover:text-stone-200 sm:block">Use cases</a>
+          <a href="https://github.com/Abhishek-Harne" target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100">
             <Github size={13} /> GitHub
           </a>
         </nav>
@@ -234,10 +292,10 @@ function Navbar() {
 // ── example repos ─────────────────────────────────────────────────────────────
 
 const EXAMPLE_REPOS = [
-  { owner: "facebook", repo: "react", label: "UI library", display: "facebook/react" },
-  { owner: "vercel", repo: "next.js", label: "React framework", display: "vercel/next.js" },
-  { owner: "tailwindlabs", repo: "tailwindcss", label: "CSS framework", display: "tailwindlabs/tailwindcss" },
-  { owner: "microsoft", repo: "vscode", label: "Code editor", display: "microsoft/vscode" },
+  { owner: "facebook",     repo: "react",        label: "UI library",      display: "facebook/react" },
+  { owner: "vercel",       repo: "next.js",       label: "React framework", display: "vercel/next.js" },
+  { owner: "tailwindlabs", repo: "tailwindcss",   label: "CSS framework",   display: "tailwindlabs/tailwindcss" },
+  { owner: "microsoft",    repo: "vscode",        label: "Code editor",     display: "microsoft/vscode" },
 ];
 
 // ── hero ──────────────────────────────────────────────────────────────────────
@@ -245,9 +303,7 @@ const EXAMPLE_REPOS = [
 function Hero({ repoInput, setRepoInput, onFetch, loading }) {
   return (
     <section className="relative flex min-h-screen flex-col items-center justify-center px-5 pb-12 pt-32 sm:px-8">
-      {/* subtle grid background */}
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,#ffffff08_1px,transparent_1px),linear-gradient(to_bottom,#ffffff08_1px,transparent_1px)] bg-[size:48px_48px]" />
-      {/* amber glow */}
       <div className="pointer-events-none absolute left-1/2 top-1/3 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-amber-400/5 blur-3xl" />
 
       <div className="relative z-10 w-full max-w-3xl text-center">
@@ -257,52 +313,34 @@ function Hero({ repoInput, setRepoInput, onFetch, loading }) {
         </div>
 
         <h1 className="text-4xl font-semibold leading-tight tracking-tight text-stone-100 sm:text-5xl lg:text-6xl">
-          Every commit deserves<br />
-          <span className="text-amber-400">an audience.</span>
+          Every commit deserves<br /><span className="text-amber-400">an audience.</span>
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-stone-400 sm:text-lg">
           Turn what your engineers ship into stories the world reads. Paste any GitHub repo and get polished content for every commit — instantly.
         </p>
 
-        {/* repo input */}
-        <form
-          onSubmit={onFetch}
-          className="mx-auto mt-10 flex max-w-xl flex-col gap-2 sm:flex-row"
-        >
-          <input
-            type="text"
-            value={repoInput}
-            onChange={(e) => setRepoInput(e.target.value)}
+        <form onSubmit={onFetch} className="mx-auto mt-10 flex max-w-xl flex-col gap-2 sm:flex-row">
+          <input type="text" value={repoInput} onChange={(e) => setRepoInput(e.target.value)}
             placeholder="owner/repo — e.g. facebook/react"
-            className="flex-1 rounded-xl border border-stone-700 bg-stone-900 px-4 py-3 font-mono text-sm text-stone-200 outline-none placeholder:text-stone-600 transition-colors focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/10"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-xl bg-amber-400 px-6 py-3 text-sm font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40"
-          >
+            className="flex-1 rounded-xl border border-stone-700 bg-stone-900 px-4 py-3 font-mono text-sm text-stone-200 outline-none placeholder:text-stone-600 transition-colors focus:border-amber-400/60 focus:ring-2 focus:ring-amber-400/10" />
+          <button type="submit" disabled={loading}
+            className="rounded-xl bg-amber-400 px-6 py-3 text-sm font-semibold text-stone-950 transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-400/40 disabled:text-stone-950/40">
             {loading ? "Fetching…" : "Fetch commits"}
           </button>
         </form>
 
-        {/* example cards */}
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {EXAMPLE_REPOS.map(({ owner, repo, label, display }) => (
-            <button
-              key={display}
-              onClick={() => onFetch(null, owner, repo)}
-              className="group rounded-xl border border-stone-800 bg-stone-900/60 px-3 py-3 text-left transition-all hover:border-amber-400/30 hover:bg-stone-900"
-            >
-              <span className="block font-mono text-xs text-stone-300 group-hover:text-amber-400 transition-colors truncate">{display}</span>
-              <span className="mt-1 block text-[11px] text-stone-600 group-hover:text-stone-500 transition-colors">{label}</span>
+            <button key={display} onClick={() => onFetch(null, owner, repo)}
+              className="group rounded-xl border border-stone-800 bg-stone-900/60 px-3 py-3 text-left transition-all hover:border-amber-400/30 hover:bg-stone-900">
+              <span className="block truncate font-mono text-xs text-stone-300 transition-colors group-hover:text-amber-400">{display}</span>
+              <span className="mt-1 block text-[11px] text-stone-600 transition-colors group-hover:text-stone-500">{label}</span>
             </button>
           ))}
         </div>
 
-        <p className="mt-4 text-[11px] text-stone-700">
-          Click any card to fetch recent commits instantly
-        </p>
+        <p className="mt-4 text-[11px] text-stone-700">Click any card to fetch recent commits instantly</p>
       </div>
     </section>
   );
@@ -310,15 +348,15 @@ function Hero({ repoInput, setRepoInput, onFetch, loading }) {
 
 // ── results area ──────────────────────────────────────────────────────────────
 
-function ResultsArea({ commits, loading, error }) {
+function ResultsArea({ commits, loading, error, owner, repo, recommendations, recommendLoading }) {
   if (!loading && !commits && !error) return null;
+
+  const recMap = Object.fromEntries((recommendations || []).map((r) => [r.sha, r]));
 
   return (
     <section className="mx-auto max-w-3xl px-5 pb-24 sm:px-8">
       {error && (
-        <div className="rounded-xl border border-red-900/50 bg-red-950/30 px-5 py-4 font-mono text-sm text-red-400">
-          {error}
-        </div>
+        <div className="rounded-xl border border-red-900/50 bg-red-950/30 px-5 py-4 font-mono text-sm text-red-400">{error}</div>
       )}
 
       {loading && (
@@ -337,11 +375,23 @@ function ResultsArea({ commits, loading, error }) {
           <div className="mb-5 flex items-center gap-3">
             <span className="font-mono text-[10px] font-semibold uppercase tracking-widest text-stone-600">Recent commits</span>
             <div className="h-px flex-1 bg-stone-800" />
+            {recommendLoading && (
+              <span className="flex items-center gap-1.5 font-mono text-[10px] text-stone-700">
+                <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-stone-700 border-t-amber-400/60" />
+                Analyzing story potential…
+              </span>
+            )}
             <span className="font-mono text-[10px] text-stone-700">{commits.length}</span>
           </div>
           <div className="space-y-3">
             {commits.map((commit) => (
-              <CommitCard key={commit.sha} commit={commit} />
+              <CommitCard
+                key={commit.sha}
+                commit={commit}
+                owner={owner}
+                repo={repo}
+                recommendation={recMap[commit.sha] || null}
+              />
             ))}
           </div>
         </div>
@@ -353,24 +403,9 @@ function ResultsArea({ commits, loading, error }) {
 // ── how it works ──────────────────────────────────────────────────────────────
 
 const STEPS = [
-  {
-    num: "01",
-    icon: GitCommit,
-    title: "Pull commits from any repo",
-    desc: "Paste a GitHub repo URL. CodeHerald fetches the 10 most recent commits with author, date, and changed files.",
-  },
-  {
-    num: "02",
-    icon: Sparkles,
-    title: "AI translates the engineering",
-    desc: "A carefully tuned prompt sends commit context to Groq's LLM. No hype, no filler — concrete, honest plain-English.",
-  },
-  {
-    num: "03",
-    icon: Send,
-    title: "Get content ready to publish",
-    desc: "A LinkedIn post and a 30–45 second video script, structured and ready. Copy with one click.",
-  },
+  { num: "01", icon: GitCommit, title: "Pull commits from any repo",    desc: "Paste a GitHub repo URL. CodeHerald fetches the 10 most recent commits with author, date, and changed files." },
+  { num: "02", icon: Sparkles,  title: "AI translates the engineering", desc: "A carefully tuned prompt sends commit context to Groq's LLM. No hype, no filler — concrete, honest plain-English." },
+  { num: "03", icon: Send,      title: "Get content ready to publish",  desc: "A LinkedIn post and a 30–45 second video script, structured and ready. Copy or share with one click." },
 ];
 
 function HowItWorks() {
@@ -378,16 +413,12 @@ function HowItWorks() {
     <section id="how-it-works" className="border-t border-stone-800 bg-stone-950 px-5 py-24 sm:px-8">
       <div className="mx-auto max-w-5xl">
         <div className="mb-4 font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/60">How it works</div>
-        <h2 className="max-w-md text-2xl font-semibold tracking-tight text-stone-100 sm:text-3xl">
-          From Git to published story in seconds.
-        </h2>
-
+        <h2 className="max-w-md text-2xl font-semibold tracking-tight text-stone-100 sm:text-3xl">From Git to published story in seconds.</h2>
         <div className="mt-14 grid grid-cols-1 gap-6 sm:grid-cols-3">
           {STEPS.map((step, i) => {
             const Icon = step.icon;
             return (
               <div key={step.num} className="relative flex flex-col gap-4">
-                {/* connector line (desktop) */}
                 {i < STEPS.length - 1 && (
                   <div className="absolute right-0 top-8 hidden h-px w-full translate-x-1/2 bg-gradient-to-r from-stone-700 to-transparent sm:block" />
                 )}
@@ -411,26 +442,10 @@ function HowItWorks() {
 // ── benefits ──────────────────────────────────────────────────────────────────
 
 const BENEFITS = [
-  {
-    icon: Eye,
-    title: "Surface hidden work",
-    desc: "Great engineering ships invisibly. CodeHerald makes every meaningful change visible to the people who should care about it.",
-  },
-  {
-    icon: Zap,
-    title: "Content at agency speed",
-    desc: "What takes a content team a day takes CodeHerald 10 seconds. No briefs, no back-and-forth, no translation meetings.",
-  },
-  {
-    icon: Terminal,
-    title: "No translation lost",
-    desc: "Engineers don't have to explain their work to marketers. The AI reads the commit and the diff — the signal stays intact.",
-  },
-  {
-    icon: Globe,
-    title: "Free and open",
-    desc: "No pricing tiers, no seat limits. Works with any public GitHub repo. Built in the open by an engineer who ships.",
-  },
+  { icon: Eye,      title: "Surface hidden work",       desc: "Great engineering ships invisibly. CodeHerald makes every meaningful change visible to the people who should care about it." },
+  { icon: Zap,      title: "Content at agency speed",   desc: "What takes a content team a day takes CodeHerald 10 seconds. No briefs, no back-and-forth, no translation meetings." },
+  { icon: Terminal, title: "No translation lost",       desc: "Engineers don't have to explain their work to marketers. The AI reads the commit and the diff — the signal stays intact." },
+  { icon: Globe,    title: "Free and open",             desc: "No pricing tiers, no seat limits. Works with any public GitHub repo. Built in the open by an engineer who ships." },
 ];
 
 function Benefits() {
@@ -438,15 +453,12 @@ function Benefits() {
     <section id="about" className="border-t border-stone-800 px-5 py-24 sm:px-8">
       <div className="mx-auto max-w-5xl">
         <div className="mb-4 font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/60">Why CodeHerald</div>
-        <h2 className="max-w-lg text-2xl font-semibold tracking-tight text-stone-100 sm:text-3xl">
-          Built for teams that ship faster than they talk.
-        </h2>
-
-        <div className="mt-12 grid grid-cols-1 gap-px bg-stone-800 rounded-xl overflow-hidden sm:grid-cols-2">
+        <h2 className="max-w-lg text-2xl font-semibold tracking-tight text-stone-100 sm:text-3xl">Built for teams that ship faster than they talk.</h2>
+        <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-xl bg-stone-800 sm:grid-cols-2">
           {BENEFITS.map((b) => {
             const Icon = b.icon;
             return (
-              <div key={b.title} className="flex flex-col gap-3 bg-stone-950 p-6 sm:p-8 hover:bg-stone-900/60 transition-colors">
+              <div key={b.title} className="flex flex-col gap-3 bg-stone-950 p-6 transition-colors hover:bg-stone-900/60 sm:p-8">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-stone-800 bg-stone-900">
                   <Icon size={16} className="text-amber-400" />
                 </div>
@@ -464,26 +476,10 @@ function Benefits() {
 // ── use cases ─────────────────────────────────────────────────────────────────
 
 const USE_CASES = [
-  {
-    icon: Megaphone,
-    who: "DevRel teams",
-    what: "Turn every release into a polished LinkedIn post or talk intro — without writing a word from scratch.",
-  },
-  {
-    icon: Terminal,
-    who: "Engineering-led startups",
-    what: "Show your technical credibility publicly. Build in public without the overhead of a dedicated content function.",
-  },
-  {
-    icon: Users,
-    who: "Technical marketers",
-    what: "Get accurate, jargon-free summaries of what shipped — without needing an engineer to explain it.",
-  },
-  {
-    icon: Heart,
-    who: "Open-source maintainers",
-    what: "Announce releases and significant merges to an audience that cares, in language that lands beyond GitHub.",
-  },
+  { icon: Megaphone, who: "DevRel teams",              what: "Turn every release into a polished LinkedIn post or talk intro — without writing a word from scratch." },
+  { icon: Terminal,  who: "Engineering-led startups",  what: "Show your technical credibility publicly. Build in public without the overhead of a dedicated content function." },
+  { icon: Users,     who: "Technical marketers",       what: "Get accurate, jargon-free summaries of what shipped — without needing an engineer to explain it." },
+  { icon: Heart,     who: "Open-source maintainers",   what: "Announce releases and significant merges to an audience that cares, in language that lands beyond GitHub." },
 ];
 
 function UseCases() {
@@ -491,19 +487,13 @@ function UseCases() {
     <section id="use-cases" className="border-t border-stone-800 px-5 py-24 sm:px-8">
       <div className="mx-auto max-w-5xl">
         <div className="mb-4 font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/60">Use cases</div>
-        <h2 className="max-w-lg text-2xl font-semibold tracking-tight text-stone-100 sm:text-3xl">
-          Who ships with CodeHerald.
-        </h2>
-
+        <h2 className="max-w-lg text-2xl font-semibold tracking-tight text-stone-100 sm:text-3xl">Who ships with CodeHerald.</h2>
         <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {USE_CASES.map((uc) => {
             const Icon = uc.icon;
             return (
-              <div
-                key={uc.who}
-                className="group flex gap-4 rounded-xl border border-stone-800 bg-stone-900/40 p-5 transition-colors hover:border-stone-700 hover:bg-stone-900"
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-stone-700 bg-stone-900 group-hover:border-amber-400/30 transition-colors">
+              <div key={uc.who} className="group flex gap-4 rounded-xl border border-stone-800 bg-stone-900/40 p-5 transition-colors hover:border-stone-700 hover:bg-stone-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-stone-700 bg-stone-900 transition-colors group-hover:border-amber-400/30">
                   <Icon size={14} className="text-amber-400" />
                 </div>
                 <div>
@@ -524,40 +514,23 @@ function UseCases() {
 function Footer() {
   return (
     <footer className="border-t border-stone-800 px-5 py-16 sm:px-8">
-      <div className="mx-auto max-w-5xl flex flex-col items-center gap-5 text-center">
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-5 text-center">
         <div className="flex items-center gap-1.5 text-sm text-stone-400">
-          Made with <Heart size={13} className="text-red-400 fill-red-400" /> and curiosity by{" "}
+          Made with <Heart size={13} className="fill-red-400 text-red-400" /> and curiosity by{" "}
           <span className="font-medium text-stone-200">Abhishek Harne</span>
         </div>
-        <p className="font-mono text-[11px] text-stone-700">
-          Built with Claude · Deployed on Vercel
-        </p>
+        <p className="font-mono text-[11px] text-stone-700">Built with Claude · Deployed on Vercel</p>
         <div className="flex items-center gap-4">
-          <a
-            href="#" /* TODO: replace with portfolio URL */
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Portfolio"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400"
-          >
+          <a href="#" target="_blank" rel="noopener noreferrer" aria-label="Portfolio" /* TODO: replace # with portfolio URL */
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400">
             <Globe size={15} />
           </a>
-          <a
-            href="#" /* TODO: replace with LinkedIn URL */
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="LinkedIn"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400"
-          >
+          <a href="#" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" /* TODO: replace # with LinkedIn URL */
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400">
             <Linkedin size={15} />
           </a>
-          <a
-            href="https://github.com/Abhishek-Harne"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400"
-          >
+          <a href="https://github.com/Abhishek-Harne" target="_blank" rel="noopener noreferrer" aria-label="GitHub"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400">
             <Github size={15} />
           </a>
         </div>
@@ -570,18 +543,37 @@ function Footer() {
 
 export default function Home() {
   const [repoInput, setRepoInput] = useState("");
+  const [currentOwner, setCurrentOwner] = useState("");
+  const [currentRepo, setCurrentRepo] = useState("");
   const [commits, setCommits] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendLoading, setRecommendLoading] = useState(false);
   const resultsRef = useRef(null);
+
+  async function fetchRecommendations(fetchedCommits) {
+    setRecommendLoading(true);
+    setRecommendations([]);
+    try {
+      const res = await fetch("/api/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commits: fetchedCommits }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRecommendations(data.recommendations || []);
+    } catch { /* fail silently */ }
+    finally { setRecommendLoading(false); }
+  }
 
   async function handleFetchCommits(e, overrideOwner, overrideRepo) {
     if (e) e.preventDefault();
 
     let owner, repo;
     if (overrideOwner && overrideRepo) {
-      owner = overrideOwner;
-      repo = overrideRepo;
+      owner = overrideOwner; repo = overrideRepo;
       setRepoInput(`${overrideOwner}/${overrideRepo}`);
     } else {
       const parsed = parseRepoInput(repoInput);
@@ -590,22 +582,25 @@ export default function Home() {
         setCommits(null);
         return;
       }
-      owner = parsed.owner;
-      repo = parsed.repo;
+      owner = parsed.owner; repo = parsed.repo;
     }
 
+    setCurrentOwner(owner);
+    setCurrentRepo(repo);
     setLoading(true);
     setError(null);
     setCommits(null);
+    setRecommendations([]);
 
-    // scroll to results
     setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
 
     try {
       const res = await fetch(`/api/commits?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
-      setCommits(data.commits || []);
+      const fetchedCommits = data.commits || [];
+      setCommits(fetchedCommits);
+      if (fetchedCommits.length > 0) fetchRecommendations(fetchedCommits);
     } catch (err) {
       setError(err.message || "Something went wrong fetching commits.");
     } finally {
@@ -616,24 +611,23 @@ export default function Home() {
   return (
     <>
       <Navbar />
-
       <main>
-        <Hero
-          repoInput={repoInput}
-          setRepoInput={setRepoInput}
-          onFetch={handleFetchCommits}
-          loading={loading}
-        />
-
+        <Hero repoInput={repoInput} setRepoInput={setRepoInput} onFetch={handleFetchCommits} loading={loading} />
         <div ref={resultsRef} className="scroll-mt-8">
-          <ResultsArea commits={commits} loading={loading} error={error} />
+          <ResultsArea
+            commits={commits}
+            loading={loading}
+            error={error}
+            owner={currentOwner}
+            repo={currentRepo}
+            recommendations={recommendations}
+            recommendLoading={recommendLoading}
+          />
         </div>
-
         <HowItWorks />
         <Benefits />
         <UseCases />
       </main>
-
       <Footer />
     </>
   );
