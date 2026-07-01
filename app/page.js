@@ -39,12 +39,16 @@ function firstLine(message) {
 
 function CommitCard({ commit }) {
   const [post, setPost] = useState(null);
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState(null);
+  const [generatingPost, setGeneratingPost] = useState(false);
+  const [postError, setPostError] = useState(null);
 
-  async function handleGenerate() {
-    setGenerating(true);
-    setError(null);
+  const [script, setScript] = useState(null);
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const [scriptError, setScriptError] = useState(null);
+
+  async function handleGeneratePost() {
+    setGeneratingPost(true);
+    setPostError(null);
     setPost(null);
     try {
       const res = await fetch("/api/generate", {
@@ -61,9 +65,34 @@ function CommitCard({ commit }) {
       }
       setPost(data.post);
     } catch (err) {
-      setError(err.message || "Something went wrong generating this post.");
+      setPostError(err.message || "Something went wrong generating this post.");
     } finally {
-      setGenerating(false);
+      setGeneratingPost(false);
+    }
+  }
+
+  async function handleGenerateScript() {
+    setGeneratingScript(true);
+    setScriptError(null);
+    setScript(null);
+    try {
+      const res = await fetch("/api/script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: commit.message,
+          filesChanged: commit.filesChanged,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || `Request failed with status ${res.status}`);
+      }
+      setScript(data.script);
+    } catch (err) {
+      setScriptError(err.message || "Something went wrong generating this script.");
+    } finally {
+      setGeneratingScript(false);
     }
   }
 
@@ -84,13 +113,22 @@ function CommitCard({ commit }) {
             </code>
           </div>
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          className="shrink-0 rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
-        >
-          {generating ? "Generating…" : "Generate post"}
-        </button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            onClick={handleGeneratePost}
+            disabled={generatingPost}
+            className="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-indigo-300"
+          >
+            {generatingPost ? "Generating…" : "Generate post"}
+          </button>
+          <button
+            onClick={handleGenerateScript}
+            disabled={generatingScript}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+          >
+            {generatingScript ? "Generating…" : "Generate video script"}
+          </button>
+        </div>
       </div>
 
       {commit.filesChanged?.length > 0 && (
@@ -112,9 +150,9 @@ function CommitCard({ commit }) {
         </div>
       )}
 
-      {error && (
+      {postError && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+          {postError}
         </div>
       )}
 
@@ -125,6 +163,23 @@ function CommitCard({ commit }) {
           </p>
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
             {post}
+          </p>
+        </div>
+      )}
+
+      {scriptError && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {scriptError}
+        </div>
+      )}
+
+      {script && (
+        <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/60 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-violet-500">
+            Video script · 30–45 sec
+          </p>
+          <p className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-800">
+            {script}
           </p>
         </div>
       )}
