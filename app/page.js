@@ -514,6 +514,14 @@ function Navbar({ onOpenHistory, historyCount }) {
               </span>
             )}
           </button>
+          <a href="https://abhishekharne.vercel.app/" target="_blank" rel="noopener noreferrer"
+            className="hidden items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100 sm:flex">
+            <Globe size={13} /> Portfolio
+          </a>
+          <a href="https://www.linkedin.com/in/abhishek-harne/" target="_blank" rel="noopener noreferrer"
+            className="hidden items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100 sm:flex">
+            <Linkedin size={13} /> LinkedIn
+          </a>
           <a href="https://github.com/Abhishek-Harne" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-900 px-3 py-1.5 text-xs font-medium text-stone-300 transition-colors hover:border-stone-600 hover:text-stone-100">
             <Github size={13} /> GitHub
@@ -790,18 +798,18 @@ function Footer() {
           <span className="font-medium text-stone-200">Abhishek Harne</span>
         </div>
         <p className="font-mono text-[11px] text-stone-700">Built with Claude · Deployed on Vercel</p>
-        <div className="flex items-center gap-4">
-          <a href="#" target="_blank" rel="noopener noreferrer" aria-label="Portfolio" /* TODO: replace # with portfolio URL */
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400">
-            <Globe size={15} />
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <a href="https://abhishekharne.vercel.app/" target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-lg border border-stone-800 px-3 py-2 text-xs text-stone-500 transition-colors hover:border-stone-700 hover:text-amber-400">
+            <Globe size={13} /> Portfolio
           </a>
-          <a href="#" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" /* TODO: replace # with LinkedIn URL */
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400">
-            <Linkedin size={15} />
+          <a href="https://www.linkedin.com/in/abhishek-harne/" target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-lg border border-stone-800 px-3 py-2 text-xs text-stone-500 transition-colors hover:border-stone-700 hover:text-amber-400">
+            <Linkedin size={13} /> LinkedIn
           </a>
-          <a href="https://github.com/Abhishek-Harne" target="_blank" rel="noopener noreferrer" aria-label="GitHub"
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-stone-800 text-stone-600 transition-colors hover:border-stone-700 hover:text-amber-400">
-            <Github size={15} />
+          <a href="https://github.com/Abhishek-Harne" target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-lg border border-stone-800 px-3 py-2 text-xs text-stone-500 transition-colors hover:border-stone-700 hover:text-amber-400">
+            <Github size={13} /> GitHub
           </a>
         </div>
       </div>
