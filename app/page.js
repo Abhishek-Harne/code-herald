@@ -576,6 +576,14 @@ function Hero({ repoInput, setRepoInput, onFetch, loading }) {
         </div>
 
         <p className="mt-4 text-[11px] text-stone-700">Click any card to fetch recent commits instantly</p>
+
+        {/* sticky note */}
+        <div className="mx-auto mt-8 max-w-sm rotate-[-0.8deg] rounded-lg border border-amber-400/20 bg-amber-400/5 px-4 py-3 text-left shadow-sm">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-widest text-amber-400/70">Builder's note</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-stone-400">
+            Video scripts are ready to paste into a video gen AI tool — but this could go further. With access to a Video Gen AI API (e.g. Google Veo), CodeHerald could generate the actual clip automatically. That's the next step — just waiting on API access.
+          </p>
+        </div>
       </div>
     </section>
   );
